@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Ring Cursor</string>
+    <string name="a11y_label">Ring Cursor</string>
+    <string name="a11y_desc">Draws a pointer controlled by the Manridy R6 ring and dispatches taps at the pointer position. Requires gesture dispatch to click.</string>
+</resources>
