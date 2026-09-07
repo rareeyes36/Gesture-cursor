@@ -218,7 +218,7 @@ class RingCursorService : AccessibilityService() {
             pressStartX = engine.x
             pressStartY = engine.y
             longPressFired = false
-            cursor?.pressed = true
+            cursor?.ringPressed = true
             main.postDelayed(longPressRunnable, LONG_PRESS_MS)
         } else if (leftNow && leftWas) {
             // held: promote to a drag once we've travelled far enough
@@ -233,7 +233,7 @@ class RingCursorService : AccessibilityService() {
         } else if (!leftNow && leftWas) {
             // release
             main.removeCallbacks(longPressRunnable)
-            cursor?.pressed = false
+            cursor?.ringPressed = false
             val held = SystemClock.uptimeMillis() - pressStartMs
             val d = drag
             if (d != null) {

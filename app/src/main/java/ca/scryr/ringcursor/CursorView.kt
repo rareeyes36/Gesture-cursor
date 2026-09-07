@@ -40,7 +40,13 @@ class CursorView(context: Context) : View(context) {
         strokeWidth = 3f * resources.displayMetrics.density
     }
 
-    var pressed: Boolean = false
+    /**
+     * Named ringPressed, not `pressed`: View already declares
+     * setPressed(boolean), and a Kotlin property called `pressed` compiles to
+     * the same JVM signature, which the compiler rejects as an accidental
+     * override.
+     */
+    var ringPressed: Boolean = false
         set(v) {
             if (field != v) {
                 field = v
@@ -57,6 +63,6 @@ class CursorView(context: Context) : View(context) {
 
         canvas.drawCircle(cx, cy, core, fill)
         canvas.drawCircle(cx, cy, core, stroke)
-        canvas.drawCircle(cx, cy, ring, if (pressed) pressedRing else stroke)
+        canvas.drawCircle(cx, cy, ring, if (ringPressed) pressedRing else stroke)
     }
 }
