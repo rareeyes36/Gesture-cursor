@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.PixelFormat
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -37,6 +38,10 @@ class RingCursorService : AccessibilityService() {
     companion object {
         @Volatile
         var probeState: ProbeState = ProbeState.IDLE
+            private set
+
+        @Volatile
+        var instance: RingCursorService? = null
             private set
 
         /** Long-press threshold. */
@@ -80,6 +85,7 @@ class RingCursorService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        instance = this
         RingLog.i("accessibility service connected")
 
         wm = getSystemService(android.content.Context.WINDOW_SERVICE) as WindowManager
@@ -90,6 +96,10 @@ class RingCursorService : AccessibilityService() {
             onMouse = ::onMouseReport,
             onState = { st ->
                 probeState = st
+                // Show the pointer as soon as any source can drive it. Gating
+                // this on BOOT_MOUSE_LIVE alone meant that on firmware which
+                // refuses boot mode the overlay stayed invisible forever, with
+                // no way to tell a dead overlay from a dead radio.
                 if (st == ProbeState.BOOT_MOUSE_LIVE) showCursor(true)
             }
         ).also { it.start() }
@@ -97,11 +107,49 @@ class RingCursorService : AccessibilityService() {
 
     override fun onDestroy() {
         RingLog.i("accessibility service destroyed")
+        instance = null
         main.removeCallbacksAndMessages(null)
         ble?.stop()
         ble = null
         removeCursor()
         super.onDestroy()
+    }
+
+    // -----------------------------------------------------------------------
+    // Self-test
+    // -----------------------------------------------------------------------
+
+    /**
+     * Drives the pointer from synthetic deltas so the overlay, PointerEngine and
+     * WindowManager path can be proven independently of the ring. The R6's
+     * firmware refuses boot-protocol mode, so without this there is no way to
+     * confirm the rest of the stack is sound.
+     */
+    private var demoTicks = 0
+    private val demoRunnable = object : Runnable {
+        override fun run() {
+            val t = demoTicks++ / 12.0
+            val dx = (kotlin.math.cos(t) * 9).toInt()
+            val dy = (kotlin.math.sin(t * 1.7) * 9).toInt()
+            if (engine.update(dx, dy)) moveCursor()
+            main.postDelayed(this, 16L)
+        }
+    }
+
+    fun setDemo(on: Boolean) {
+        main.removeCallbacks(demoRunnable)
+        if (on) {
+            val (w, h) = screenBounds()
+            engine.setScreen(w, h)
+            engine.centre()
+            showCursor(true)
+            moveCursor()
+            main.post(demoRunnable)
+            RingLog.i("demo cursor ON ($w x $h) - proves overlay + engine + WM path")
+        } else {
+            showCursor(false)
+            RingLog.i("demo cursor OFF")
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) { /* unused */ }
@@ -112,9 +160,28 @@ class RingCursorService : AccessibilityService() {
     // Overlay
     // -----------------------------------------------------------------------
 
+    /**
+     * The real, full-screen bounds.
+     *
+     * resources.displayMetrics on a Service context reports the *content* area,
+     * excluding system bars: on a Pixel 8 Pro it returned 1344x2659 against a
+     * true 1344x2992. The pointer space was 333px short, so the cursor could not
+     * reach the bottom of the screen and dispatched taps missed their targets.
+     */
+    private fun screenBounds(): Pair<Int, Int> {
+        val manager = wm
+        if (manager != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val b = manager.maximumWindowMetrics.bounds
+            return b.width() to b.height()
+        }
+        val d = resources.displayMetrics
+        return d.widthPixels to d.heightPixels
+    }
+
     private fun addCursor() {
         val d = resources.displayMetrics
-        engine.setScreen(d.widthPixels, d.heightPixels)
+        val (w, h) = screenBounds()
+        engine.setScreen(w, h)
         engine.centre()
 
         val sizePx = (CursorView.SIZE_DP * d.density).toInt()
@@ -141,7 +208,7 @@ class RingCursorService : AccessibilityService() {
             wm?.addView(view, params)
             cursor = view
             lp = params
-            RingLog.i("cursor overlay added (${d.widthPixels}x${d.heightPixels})")
+            RingLog.i("cursor overlay added ($w x $h)")
         } catch (t: Throwable) {
             RingLog.e("addView failed: ${t.message}")
         }

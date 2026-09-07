@@ -1,4 +1,4 @@
-# Ring Cursor 0.1-probe
+# Ring Cursor 0.2-probe
 
 An Android overlay cursor driven by a Manridy R6 smart ring over BLE.
 
@@ -14,6 +14,41 @@ PnP ID       02-3A-09-05-0A-02-00   (USB-IF, VID 0x093A PixArt, PID 0x050A)
 ```
 
 ---
+
+## RESULT (2026-09-07): the boot-mouse hypothesis is dead
+
+The probe ran on hardware, twice, and the answer is **no**.
+
+```
+write 0x2A4E status=0
+ProtocolMode reads back as 0x01     <- write ignored
+cccd 0x2A33 status=13               <- boot mouse subscribe REJECTED
+cccd 0x2A22 status=13               <- boot keyboard subscribe REJECTED
+cccd 0xFEA1 status=0                <- vendor OK
+cccd 0xFEC8 status=0                <- vendor OK
+cccd f000efe3 status=0              <- vendor OK
+cccd 0x2A19 status=0                <- battery OK
+```
+
+Run once bonded and once unbonded (scan path, no HID host present). **Identical
+result both times**, so the system HID host was never the cause. On the same
+connection, milliseconds apart, every non-HID CCCD write succeeds and both HID
+boot-report CCCD writes fail with status 13 (`GATT_INVALID_ATTRIBUTE_LENGTH`).
+
+The R6 declares HOGP and exposes 0x2A4E / 0x2A33 / 0x2A22 in its GATT table, but
+Protocol Mode is pinned to Report Mode and the boot CCCDs are non-functional
+stubs. This is a cosmetic HID implementation. Nothing in Android is stopping us.
+
+Two things were confirmed along the way:
+
+- The AOSP blocklist is real, in our own process:
+  `read ReportMap threw SecurityException: ... android.permission.BLUETOOTH_PRIVILEGED`
+- FEA2 is the step goal: `01-40-1F-00` -> field 0x01, u16le = 8000.
+
+The vendor channels stream fine (FEA1, FEC8, efe3, battery), so **the remaining
+route is the FEE7 vendor protocol, not anything HID-shaped.** Note also that the
+ring takes back the fast connection interval after ~10s
+(`interval=99 latency=4`), which will fight any pointer built on this link.
 
 ## What this build is actually for
 
@@ -69,9 +104,12 @@ process with no root and no privileged permission.
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-No Gradle wrapper is checked in. Either open the folder in Android Studio
+No Gradle wrapper jar is checked in. Either open the folder in Android Studio
 (it will offer to generate one) or run `gradle wrapper` once with a local
-Gradle 8.7+.
+Gradle 9.7+. CI regenerates it automatically.
+
+Toolchain: AGP 9.4.0, Kotlin 2.4.20, Gradle 9.7.1, compileSdk/targetSdk 37,
+minSdk 26, JDK 17 bytecode built on JDK 21.
 
 ## Run
 
@@ -94,7 +132,8 @@ The `ProbeState` in the status bar is the answer:
 |---|---|---|
 | `BOOT_MOUSE_LIVE` | It worked. Non-zero deltas arriving on 0x2A33. | Tune `PointerEngine`, build features. |
 | `BOOT_MOUSE_SILENT` | Mode set, subscribed, nothing ever arrived in 25 s. | Firmware declares boot mode but stubs it. Fall back to pairing as a system HID device and decorating the native cursor, or go to a rooted `/dev/input` read. |
-| `BOOT_MODE_REFUSED` | Protocol Mode would not move off `0x01`. | Check the ring is not bonded as HID. If it still refuses, the firmware pins Report mode. |
+| `BOOT_MODE_REFUSED` | Protocol Mode would not move off `0x01`. | Confirmed on R6 firmware 3.00. The firmware pins Report mode. |
+| `BOOT_SUBSCRIBE_REFUSED` | The CCCD write on 0x2A33 was rejected (status 13). | Confirmed on R6 firmware 3.00. Boot reports are stubs. |
 | `FAILED` | Never connected. | Bluetooth off, permissions missing, or ring asleep. Charge it and retry. |
 
 The log also records the blocklist failing on `0x2A4B`, on purpose, so you have
@@ -182,7 +221,7 @@ these populate.
 
 ## Open questions
 
-1. Does boot mouse mode work? (This build answers it.)
+1. ~~Does boot mouse mode work?~~ **Answered: no.** See RESULT above.
 2. Is the pointing sensor optical/capacitive (thumb) or an IMU (hand)? The GATT
    tree cannot tell us. Pair as HID, watch the cursor, wave your hand, then try
    your thumb.

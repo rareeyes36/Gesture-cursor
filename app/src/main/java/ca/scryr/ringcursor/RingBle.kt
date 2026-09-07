@@ -41,6 +41,12 @@ enum class ProbeState {
     BOOT_MOUSE_SILENT,
     /** Could not even write Protocol Mode. */
     BOOT_MODE_REFUSED,
+    /**
+     * The CCCD write on Boot Mouse Input (0x2A33) was rejected by the device.
+     * Confirmed on Manridy R6 firmware 3.00: status 13 on 0x2A33 and 0x2A22
+     * while every non-HID CCCD write on the same connection returns 0.
+     */
+    BOOT_SUBSCRIBE_REFUSED,
     FAILED
 }
 
@@ -105,6 +111,10 @@ class RingBle(
             it.address == RingUuids.KNOWN_MAC || it.name == RingUuids.ADVERTISED_NAME
         }?.let {
             RingLog.i("using bonded device ${it.address}")
+            RingLog.e(
+                "NOTE: device is BONDED. Android's HID host is a second GATT client " +
+                    "and will contend for Protocol Mode. Forget the device to test cleanly."
+            )
             connect(it)
             return
         }
@@ -226,7 +236,24 @@ class RingBle(
         override fun onDescriptorWrite(
             g: BluetoothGatt, d: BluetoothGattDescriptor, status: Int
         ) {
-            RingLog.d("cccd ${short(d.characteristic.uuid)} status=$status")
+            val uuid = d.characteristic.uuid
+            RingLog.d("cccd ${short(uuid)} status=$status")
+
+            // A failed CCCD write on the boot reports is the whole answer, so it
+            // must reach ProbeState rather than only the log. Previously this
+            // status was discarded and the probe could report BOOT_MODE_SET
+            // while nothing was actually subscribed.
+            if (status != BluetoothGatt.GATT_SUCCESS &&
+                (uuid == RingUuids.BOOT_MOUSE_INPUT || uuid == RingUuids.BOOT_KEYBOARD_INPUT)
+            ) {
+                RingLog.e(
+                    "subscribe REFUSED on ${short(uuid)} (status=$status). The firmware " +
+                        "exposes this boot report but will not enable notifications on it."
+                )
+                if (uuid == RingUuids.BOOT_MOUSE_INPUT) {
+                    state = ProbeState.BOOT_SUBSCRIBE_REFUSED
+                }
+            }
             queue.complete()
         }
 

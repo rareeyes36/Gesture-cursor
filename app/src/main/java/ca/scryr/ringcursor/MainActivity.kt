@@ -15,6 +15,8 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 /**
  * Console, not a UI. Its job is to get the two permissions granted and then
@@ -29,6 +31,7 @@ class MainActivity : AppCompatActivity() {
 
     private val ui = Handler(Looper.getMainLooper())
     private var lastVersion = -1L
+    private var demoOn = false
 
     private val tick = object : Runnable {
         override fun run() {
@@ -40,6 +43,22 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+
+        // targetSdk 35+ enforces edge-to-edge with no opt-out, so the window no
+        // longer stops at the system bars. Without this the status line sits
+        // under the clock and the log runs beneath the navigation bar.
+        val root = findViewById<android.view.View>(R.id.root)
+        val basePad = (12 * resources.displayMetrics.density).toInt()
+        ViewCompat.setOnApplyWindowInsetsListener(root) { v, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            v.setPadding(
+                bars.left + basePad,
+                bars.top + basePad,
+                bars.right + basePad,
+                bars.bottom + basePad
+            )
+            insets
+        }
 
         status = findViewById(R.id.status)
         log = findViewById(R.id.log)
@@ -68,6 +87,21 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnClear).setOnClickListener {
             RingLog.clear()
             refresh()
+        }
+
+        findViewById<Button>(R.id.btnDemo).setOnClickListener {
+            val svc = RingCursorService.instance
+            if (svc == null) {
+                Toast.makeText(this, "Enable the service first", Toast.LENGTH_SHORT).show()
+            } else {
+                demoOn = !demoOn
+                svc.setDemo(demoOn)
+                Toast.makeText(
+                    this,
+                    if (demoOn) "Demo cursor on" else "Demo cursor off",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
         }
 
         RingLog.i("--- Ring Cursor 0.1-probe ---")
