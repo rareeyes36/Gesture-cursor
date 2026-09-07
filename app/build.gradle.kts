@@ -1,8 +1,7 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
-
 plugins {
+    // Kotlin compilation comes from AGP itself since 9.0. Applying
+    // org.jetbrains.kotlin.android alongside it is a hard error.
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
 }
 
 android {
@@ -23,16 +22,11 @@ android {
         }
     }
 
+    // AGP derives the Kotlin jvmTarget from these, so no separate
+    // kotlinOptions/compilerOptions block is needed.
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-    }
-}
-
-// Kotlin 2.x replaced the android { kotlinOptions { } } block with this.
-kotlin {
-    compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_17)
     }
 }
 
