@@ -1,0 +1,33 @@
+# Temporary: asks a GitHub runner (which can reach Google Maven) what versions
+# actually exist, so the build files can be pinned to real releases rather than
+# guessed ones. Delete once the SDK bump has landed.
+name: Probe versions
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Android Gradle Plugin
+        run: |
+          curl -sSL https://dl.google.com/dl/android/maven2/com/android/tools/build/gradle/maven-metadata.xml \
+            | grep -oE '<version>[^<]+</version>' | tail -30
+
+      - name: androidx.core core-ktx
+        run: |
+          curl -sSL https://dl.google.com/dl/android/maven2/androidx/core/core-ktx/maven-metadata.xml \
+            | grep -oE '<version>[^<]+</version>' | tail -12
+
+      - name: androidx.appcompat
+        run: |
+          curl -sSL https://dl.google.com/dl/android/maven2/androidx/appcompat/appcompat/maven-metadata.xml \
+            | grep -oE '<version>[^<]+</version>' | tail -12
+
+      - name: Installed SDK platforms + JDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls -1 "$ANDROID_HOME/platforms" || true
+          ls -1 "$ANDROID_HOME/build-tools" || true
+          java -version 2>&1
