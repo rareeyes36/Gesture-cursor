@@ -108,6 +108,23 @@ class MainActivity : AppCompatActivity() {
                 if (RingCursorService.keyToScroll) "Key-scroll: ON" else "Key-scroll: OFF"
         }
 
+        val probeBtn = findViewById<Button>(R.id.btnProbe)
+        probeBtn.setOnClickListener {
+            val svc = RingCursorService.instance
+            if (svc == null) {
+                Toast.makeText(this, "Enable the service first", Toast.LENGTH_SHORT).show()
+            } else {
+                val running = svc.toggleProbe()
+                probeBtn.text =
+                    if (running) "STOP PROBE" else "PROBE FEC7 (vendor opcodes)"
+                Toast.makeText(
+                    this,
+                    if (running) "Probing FEC7 - takes ~4 min" else "Probe stopped",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+
         findViewById<Button>(R.id.btnBle).setOnClickListener {
             val svc = RingCursorService.instance
             if (svc == null) {

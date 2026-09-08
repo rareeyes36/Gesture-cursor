@@ -83,6 +83,12 @@
             android:text="Key-scroll: ON" />
     </LinearLayout>
 
+    <Button
+        android:id="@+id/btnProbe"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="PROBE FEC7 (vendor opcodes)" />
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

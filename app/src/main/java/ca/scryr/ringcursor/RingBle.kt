@@ -16,6 +16,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import java.util.UUID
 
 /** One HID boot-protocol mouse report. dx/dy are signed 8-bit deltas. */
@@ -64,6 +65,29 @@ class RingBle(
     private var scanning = false
     private var mouseReportCount = 0
     private var nonZeroMouseCount = 0
+
+    // FEC7 command probe.
+    private var probing = false
+    private var probeOpcode = -1
+    private var probeWidth = 0
+    private var probeSentAt = 0L
+    private var probeResponses = 0
+
+    /** Auto-reconnect: the R6 drops the link every minute or two on its own. */
+    var autoReconnect = true
+    private var reconnectAttempts = 0
+
+    /**
+     * Tag a notification with whichever opcode was written just before it.
+     * Without this correlation the response stream is unattributable noise.
+     */
+    private fun probeTag(): String {
+        if (probeOpcode < 0) return ""
+        val dt = SystemClock.uptimeMillis() - probeSentAt
+        if (dt > 2500) return ""
+        probeResponses++
+        return "   <== ${dt}ms after FEC7 0x%02X (%dB)".format(probeOpcode, probeWidth)
+    }
 
     var state: ProbeState = ProbeState.IDLE
         private set(v) {
@@ -155,6 +179,8 @@ class RingBle(
     }
 
     fun stop() {
+        autoReconnect = false
+        probing = false
         stopScan()
         queue.clear()
         try {
@@ -185,6 +211,7 @@ class RingBle(
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
             if (newState == BluetoothGatt.STATE_CONNECTED) {
                 RingLog.i("connected (status=$status)")
+                reconnectAttempts = 0
                 state = ProbeState.CONNECTED
 
                 // The ring advertises a 125 ms preferred interval with latency 4,
@@ -201,6 +228,17 @@ class RingBle(
                 RingLog.e("disconnected (status=$status)")
                 queue.clear()
                 state = ProbeState.IDLE
+                try { g.close() } catch (t: Throwable) { /* already gone */ }
+                gatt = null
+
+                if (autoReconnect) {
+                    // Back off, but stay responsive: the ring sleeps and wakes
+                    // constantly, and a probe sweep outlives several cycles.
+                    val delay = (1000L shl reconnectAttempts.coerceAtMost(4)).coerceAtMost(15_000L)
+                    reconnectAttempts++
+                    RingLog.i("reconnecting in ${delay}ms (attempt $reconnectAttempts)")
+                    main.postDelayed({ if (autoReconnect) start() }, delay)
+                }
             }
         }
 
@@ -359,6 +397,86 @@ class RingBle(
         }, 25_000)
     }
 
+    // -----------------------------------------------------------------------
+    // FEC7 command probe
+    //
+    // Every characteristic read so far is passive. FEC7 is the vendor command
+    // input and nothing has ever been written to it. If the motion sensor is
+    // dormant until the vendor app enables it, the opcode that does so is here.
+    // -----------------------------------------------------------------------
+
+    fun stopProbe() {
+        probing = false
+        probeOpcode = -1
+        RingLog.i("=== FEC7 probe stopped ===")
+    }
+
+    fun isProbing(): Boolean = probing
+
+    /**
+     * Walk opcodes 0x00..0xFF on FEC7, twice: once as a bare byte and once as a
+     * 20-byte padded frame, since vendors in this family use both shapes.
+     * Everything arriving within 2.5s of a write is tagged with that opcode.
+     */
+    fun startProbe(gapMs: Long = 260L) {
+        if (probing) { RingLog.e("probe already running"); return }
+        val g = gatt
+        if (g == null) { RingLog.e("probe: not connected"); return }
+        val ch = g.getService(RingUuids.VENDOR_FEE7)?.getCharacteristic(RingUuids.FEC7_WRITE)
+        if (ch == null) { RingLog.e("probe: FEC7 not found"); return }
+
+        probing = true
+        probeResponses = 0
+        RingLog.i("=== FEC7 probe start: 0x00..0xFF as 1-byte then 20-byte, ${gapMs}ms apart ===")
+        RingLog.i("=== this writes unknown vendor commands; settings may change ===")
+
+        var width = 1
+        var op = 0
+
+        fun step() {
+            if (!probing) return
+            if (op > 0xFF) {
+                if (width == 1) {
+                    width = 20
+                    op = 0
+                    RingLog.i("=== switching to 20-byte frames ===")
+                } else {
+                    probing = false
+                    probeOpcode = -1
+                    RingLog.i("=== FEC7 probe done: $probeResponses tagged responses ===")
+                    return
+                }
+            }
+            val live = gatt
+            val c = live?.getService(RingUuids.VENDOR_FEE7)
+                ?.getCharacteristic(RingUuids.FEC7_WRITE)
+            if (live == null || c == null) {
+                // Dropped mid-sweep; wait for auto-reconnect and resume.
+                RingLog.e("probe: link down at 0x%02X, waiting".format(op))
+                main.postDelayed({ step() }, 2000)
+                return
+            }
+
+            val cur = op
+            val w = width
+            probeOpcode = cur
+            probeWidth = w
+            probeSentAt = SystemClock.uptimeMillis()
+            val payload = if (w == 1) {
+                byteArrayOf(cur.toByte())
+            } else {
+                ByteArray(20).also { it[0] = cur.toByte() }
+            }
+            queue.enqueue("FEC7 <- 0x%02X (%dB)".format(cur, w)) {
+                live.writeCharCompat(c, payload, BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+            }
+            if (cur % 0x20 == 0) RingLog.i("probe at 0x%02X (%dB)".format(cur, w))
+            op++
+            main.postDelayed({ step() }, gapMs)
+        }
+        step()
+    }
+
     private fun subscribe(
         g: BluetoothGatt,
         ch: BluetoothGattCharacteristic,
@@ -427,15 +545,18 @@ class RingBle(
                 RingLog.i("BOOT-KB ${value.hex()}")
 
             RingUuids.FEA1_NOTIFY ->
-                RingLog.d("FEA1 ${value.hex()}")
+                RingLog.d("FEA1 ${value.hex()}${probeTag()}")
+
+            RingUuids.FEC8_INDICATE ->
+                RingLog.i("FEC8 ${value.hex()}${probeTag()}")
 
             RingUuids.TI_NOTIFY ->
-                RingLog.d("efe3 ${value.hex()}${decodeTi(value)}")
+                RingLog.d("efe3 ${value.hex()}${decodeTi(value)}${probeTag()}")
 
             RingUuids.BATTERY_LEVEL ->
                 RingLog.d("battery ${value.u8(0)}%")
 
-            else -> RingLog.d("notify ${short(uuid)} ${value.hex()}")
+            else -> RingLog.i("notify ${short(uuid)} ${value.hex()}${probeTag()}")
         }
     }
 

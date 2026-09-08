@@ -180,6 +180,23 @@ class RingCursorService : AccessibilityService() {
 
     fun isBleRunning(): Boolean = ble != null
 
+    /** Sweep vendor opcodes on FEC7 and correlate every response. */
+    fun toggleProbe(): Boolean {
+        val b = ble
+        if (b == null) {
+            RingLog.e("probe: BLE not running - press 'BLE: reconnect' first")
+            return false
+        }
+        if (b.isProbing()) {
+            b.stopProbe()
+            return false
+        }
+        b.startProbe()
+        return true
+    }
+
+    fun isProbing(): Boolean = ble?.isProbing() == true
+
     override fun onDestroy() {
         RingLog.i("accessibility service destroyed")
         instance = null
