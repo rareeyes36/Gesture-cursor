@@ -12,8 +12,12 @@ android {
         applicationId = "ca.scryr.ringcursor"
         minSdk = 26
         targetSdk = 37
-        versionCode = 2
-        versionName = "0.2-probe"
+        versionCode = 3
+        versionName = "0.3-input"
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {

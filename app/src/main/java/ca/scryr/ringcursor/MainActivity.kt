@@ -122,7 +122,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        RingLog.i("--- Ring Cursor 0.1-probe ---")
+        RingLog.i("--- Ring Cursor ${BuildConfig.VERSION_NAME} (build ${BuildConfig.VERSION_CODE}) ---")
         RingLog.i("target: Manridy R6, ${RingUuids.KNOWN_MAC}")
         RingLog.i("experiment: write 0x00 to 0x2A4E, subscribe 0x2A33")
     }

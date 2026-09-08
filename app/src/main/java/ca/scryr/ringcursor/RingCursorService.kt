@@ -118,6 +118,27 @@ class RingCursorService : AccessibilityService() {
         instance = this
         RingLog.i("accessibility service connected")
 
+        // Motion events are requested at runtime rather than through
+        // android:motionEventSources in the XML: that attribute is not present
+        // in this SDK's resource table and fails resource linking, while the
+        // AccessibilityServiceInfo setter does exist.
+        if (Build.VERSION.SDK_INT >= 34) {
+            try {
+                val info = serviceInfo
+                info.motionEventSources =
+                    InputDevice.SOURCE_MOUSE or
+                        InputDevice.SOURCE_TOUCHPAD or
+                        InputDevice.SOURCE_JOYSTICK or
+                        InputDevice.SOURCE_TRACKBALL
+                serviceInfo = info
+                RingLog.i("motionEventSources set: mouse|touchpad|joystick|trackball")
+            } catch (t: Throwable) {
+                RingLog.e("could not request motion events: ${t.javaClass.simpleName}: ${t.message}")
+            }
+        } else {
+            RingLog.e("motion events need API 34+; key events still active")
+        }
+
         wm = getSystemService(android.content.Context.WINDOW_SERVICE) as WindowManager
         addCursor()
 

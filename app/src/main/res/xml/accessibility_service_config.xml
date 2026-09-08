@@ -8,5 +8,4 @@
     android:canRequestFilterKeyEvents="true"
     android:isAccessibilityTool="true"
     android:canRetrieveWindowContent="false"
-    android:motionEventSources="mouse|touchpad|joystick|trackball"
     android:notificationTimeout="100" />
