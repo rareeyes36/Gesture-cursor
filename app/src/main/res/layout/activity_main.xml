@@ -11,8 +11,17 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:textStyle="bold"
-        android:paddingBottom="8dp"
         android:text="idle" />
+
+    <TextView
+        android:id="@+id/signal"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textStyle="bold"
+        android:textSize="16sp"
+        android:paddingTop="6dp"
+        android:paddingBottom="8dp"
+        android:text="SIGNAL 0 : none yet" />
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -52,6 +61,26 @@
             android:layout_weight="1"
             android:layout_height="wrap_content"
             android:text="Clear" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnDevices"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="Input devices" />
+
+        <Button
+            android:id="@+id/btnKeyScroll"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="Key-scroll: ON" />
     </LinearLayout>
 
     <Button

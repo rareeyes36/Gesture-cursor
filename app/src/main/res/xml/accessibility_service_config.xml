@@ -3,8 +3,10 @@
     android:description="@string/a11y_desc"
     android:accessibilityEventTypes="typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows"
+    android:accessibilityFlags="flagDefault|flagRetrieveInteractiveWindows|flagRequestFilterKeyEvents"
     android:canPerformGestures="true"
+    android:canRequestFilterKeyEvents="true"
     android:isAccessibilityTool="true"
     android:canRetrieveWindowContent="false"
+    android:motionEventSources="mouse|touchpad|joystick|trackball"
     android:notificationTimeout="100" />

@@ -26,6 +26,7 @@ import androidx.core.view.WindowInsetsCompat
 class MainActivity : AppCompatActivity() {
 
     private lateinit var status: TextView
+    private lateinit var signal: TextView
     private lateinit var log: TextView
     private lateinit var scroll: ScrollView
 
@@ -61,6 +62,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         status = findViewById(R.id.status)
+        signal = findViewById(R.id.signal)
         log = findViewById(R.id.log)
         scroll = findViewById(R.id.scroll)
 
@@ -87,6 +89,22 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btnClear).setOnClickListener {
             RingLog.clear()
             refresh()
+        }
+
+        findViewById<Button>(R.id.btnDevices).setOnClickListener {
+            val svc = RingCursorService.instance
+            if (svc == null) {
+                Toast.makeText(this, "Enable the service first", Toast.LENGTH_SHORT).show()
+            } else {
+                svc.dumpInputDevices()
+            }
+        }
+
+        val keyScrollBtn = findViewById<Button>(R.id.btnKeyScroll)
+        keyScrollBtn.setOnClickListener {
+            RingCursorService.keyToScroll = !RingCursorService.keyToScroll
+            keyScrollBtn.text =
+                if (RingCursorService.keyToScroll) "Key-scroll: ON" else "Key-scroll: OFF"
         }
 
         findViewById<Button>(R.id.btnDemo).setOnClickListener {
@@ -123,6 +141,7 @@ class MainActivity : AppCompatActivity() {
         val bt = if (hasBt()) "BT ok" else "BT MISSING"
         val a11y = if (isServiceEnabled()) "service on" else "service OFF"
         status.text = "${RingCursorService.probeState}   |   $bt   |   $a11y"
+        signal.text = "SIGNAL ${RingCursorService.signalCount} : ${RingCursorService.lastSignal}"
 
         val v = RingLog.version
         if (v != lastVersion) {

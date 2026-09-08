@@ -58,6 +58,12 @@ class PointerEngine {
         y = y.coerceIn(0f, (h - 1).toFloat())
     }
 
+    /** Place the pointer at an absolute screen position (mouse/hover events). */
+    fun moveTo(nx: Float, ny: Float) {
+        x = nx.coerceIn(0f, (screenW - 1).toFloat())
+        y = ny.coerceIn(0f, (screenH - 1).toFloat())
+    }
+
     fun centre() {
         x = screenW / 2f
         y = screenH / 2f

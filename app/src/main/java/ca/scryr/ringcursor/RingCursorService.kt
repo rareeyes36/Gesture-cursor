@@ -10,6 +10,9 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.WindowManager
+import android.view.InputDevice
+import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.accessibility.AccessibilityEvent
 import kotlin.math.abs
 
@@ -44,6 +47,25 @@ class RingCursorService : AccessibilityService() {
         var instance: RingCursorService? = null
             private set
 
+        /**
+         * Last real-time input event seen from ANY source, and how many.
+         * This is the "signal received" indicator: the vendor BLE streams
+         * (FEA1 every 5s, efe3 every 12s) are fixed-cadence telemetry counters
+         * and can never represent a button press, so the only live input the
+         * ring can deliver is through Android's own HID stack once paired.
+         */
+        @Volatile
+        var lastSignal: String = "none yet"
+            private set
+
+        @Volatile
+        var signalCount: Int = 0
+            private set
+
+        /** Turn a button press into a scroll gesture. */
+        @Volatile
+        var keyToScroll: Boolean = true
+
         /** Long-press threshold. */
         private const val LONG_PRESS_MS = 500L
 
@@ -52,7 +74,15 @@ class RingCursorService : AccessibilityService() {
 
         /** How often a held-and-moving press extends the drag stroke. */
         private const val DRAG_STEP_MS = 90L
+
+        internal fun recordSignal(what: String) {
+            signalCount++
+            lastSignal = what
+            RingLog.i("SIGNAL #$signalCount  $what")
+        }
     }
+
+    private fun signal(what: String) = recordSignal(what)
 
     private val main = Handler(Looper.getMainLooper())
     private val engine = PointerEngine()
@@ -150,6 +180,85 @@ class RingCursorService : AccessibilityService() {
             showCursor(false)
             RingLog.i("demo cursor OFF")
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Real-time input from Android's HID stack
+    //
+    // This is the route that does not touch HID-over-GATT at all. Pair the ring
+    // normally, let the system decode it, and observe the input events it
+    // produces here. Nothing below needs BLUETOOTH_PRIVILEGED.
+    // -----------------------------------------------------------------------
+
+    private fun describe(id: Int): String {
+        val d = InputDevice.getDevice(id) ?: return "dev=$id(?)"
+        return "dev=$id '${d.name}' src=0x${Integer.toHexString(d.sources)} ext=${d.isExternal}"
+    }
+
+    override fun onKeyEvent(event: KeyEvent): Boolean {
+        val name = KeyEvent.keyCodeToString(event.keyCode)
+        val action = if (event.action == KeyEvent.ACTION_DOWN) "DOWN" else "UP"
+        val external = InputDevice.getDevice(event.deviceId)?.isExternal == true
+
+        signal("KEY $name ($action) code=${event.keyCode} scan=${event.scanCode} ${describe(event.deviceId)}")
+
+        // Only act on hardware that is not part of the phone, so the volume and
+        // power keys keep working normally.
+        if (keyToScroll && external && event.action == KeyEvent.ACTION_DOWN) {
+            showCursor(true)
+            dispatchScroll(engine.x, engine.y, 600f)
+            RingLog.i("  -> scroll dispatched at (${engine.x.toInt()}, ${engine.y.toInt()})")
+        }
+
+        // Never consume: passing false leaves the key working everywhere else.
+        return false
+    }
+
+    override fun onMotionEvent(event: MotionEvent) {
+        val x = event.getAxisValue(MotionEvent.AXIS_X)
+        val y = event.getAxisValue(MotionEvent.AXIS_Y)
+        val hs = event.getAxisValue(MotionEvent.AXIS_HSCROLL)
+        val vs = event.getAxisValue(MotionEvent.AXIS_VSCROLL)
+        val rx = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X)
+        val ry = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y)
+
+        // Build the numbers with format() first: a device name containing a '%'
+        // would otherwise be parsed as a format specifier and throw.
+        val nums = "x=%.1f y=%.1f rel=(%.1f,%.1f) scroll=(%.1f,%.1f)"
+            .format(x, y, rx, ry, hs, vs)
+        signal("MOTION src=0x${Integer.toHexString(event.source)} $nums ${describe(event.deviceId)}")
+
+        // Drive the pointer from whatever the system gives us.
+        showCursor(true)
+        if (rx != 0f || ry != 0f) {
+            if (engine.update(rx.toInt(), ry.toInt())) moveCursor()
+        } else if (x != 0f || y != 0f) {
+            engine.moveTo(x, y)
+            moveCursor()
+        }
+        if (vs != 0f) dispatchScroll(engine.x, engine.y, vs * 220f)
+    }
+
+    /** Everything Android currently considers an input device. */
+    fun dumpInputDevices() {
+        val ids = InputDevice.getDeviceIds()
+        RingLog.i("--- input devices (${ids.size}) ---")
+        for (id in ids) {
+            val d = InputDevice.getDevice(id) ?: continue
+            val kinds = buildString {
+                val s = d.sources
+                if (s and InputDevice.SOURCE_KEYBOARD != 0) append("KEYBOARD ")
+                if (s and InputDevice.SOURCE_MOUSE != 0) append("MOUSE ")
+                if (s and InputDevice.SOURCE_TOUCHPAD != 0) append("TOUCHPAD ")
+                if (s and InputDevice.SOURCE_JOYSTICK != 0) append("JOYSTICK ")
+                if (s and InputDevice.SOURCE_TRACKBALL != 0) append("TRACKBALL ")
+                if (s and InputDevice.SOURCE_DPAD != 0) append("DPAD ")
+                if (s and InputDevice.SOURCE_TOUCHSCREEN != 0) append("TOUCHSCREEN ")
+            }
+            RingLog.i("  [$id] '${d.name}' external=${d.isExternal} $kinds")
+            RingLog.d("       sources=0x${Integer.toHexString(d.sources)} vendor=0x${Integer.toHexString(d.vendorId)} product=0x${Integer.toHexString(d.productId)}")
+        }
+        RingLog.i("--- if the ring is not listed, Android is not receiving input from it ---")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) { /* unused */ }
