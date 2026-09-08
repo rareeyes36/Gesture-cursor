@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
@@ -107,6 +108,19 @@ class MainActivity : AppCompatActivity() {
                 if (RingCursorService.keyToScroll) "Key-scroll: ON" else "Key-scroll: OFF"
         }
 
+        findViewById<Button>(R.id.btnBle).setOnClickListener {
+            val svc = RingCursorService.instance
+            if (svc == null) {
+                Toast.makeText(this, "Enable the service first", Toast.LENGTH_SHORT).show()
+            } else if (svc.isBleRunning()) {
+                svc.stopBle()
+                Toast.makeText(this, "BLE stopped", Toast.LENGTH_SHORT).show()
+            } else {
+                svc.startBle()
+                Toast.makeText(this, "BLE reconnecting", Toast.LENGTH_SHORT).show()
+            }
+        }
+
         findViewById<Button>(R.id.btnDemo).setOnClickListener {
             val svc = RingCursorService.instance
             if (svc == null) {
@@ -135,6 +149,25 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         ui.removeCallbacks(tick)
         super.onPause()
+    }
+
+    /**
+     * Second capture point for key events, independent of the accessibility
+     * service. While this window has focus every key reaches here, so if the
+     * ring produces anything at all it shows up even when the service's
+     * onKeyEvent filter does not fire.
+     */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val action = when (event.action) {
+            KeyEvent.ACTION_DOWN -> "DOWN"
+            KeyEvent.ACTION_UP -> "UP"
+            else -> "action=${event.action}"
+        }
+        RingCursorService.recordSignal(
+            "ACTIVITY KEY ${KeyEvent.keyCodeToString(event.keyCode)} ($action) " +
+                "code=${event.keyCode} scan=${event.scanCode} dev=${event.deviceId}"
+        )
+        return super.dispatchKeyEvent(event)
     }
 
     private fun refresh() {

@@ -10,6 +10,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.WindowManager
+import android.hardware.input.InputManager
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -142,6 +143,20 @@ class RingCursorService : AccessibilityService() {
         wm = getSystemService(android.content.Context.WINDOW_SERVICE) as WindowManager
         addCursor()
 
+        startBle()
+
+        try {
+            (getSystemService(Context.INPUT_SERVICE) as InputManager)
+                .registerInputDeviceListener(inputListener, main)
+            RingLog.i("watching for input devices appearing/disappearing")
+        } catch (t: Throwable) {
+            RingLog.e("registerInputDeviceListener: ${t.message}")
+        }
+    }
+
+    /** (Re)open the app's own GATT link. Not needed for HID input. */
+    fun startBle() {
+        ble?.stop()
         ble = RingBle(
             ctx = this,
             onMouse = ::onMouseReport,
@@ -156,9 +171,23 @@ class RingCursorService : AccessibilityService() {
         ).also { it.start() }
     }
 
+    fun stopBle() {
+        ble?.stop()
+        ble = null
+        RingLog.i("BLE stopped by user")
+    }
+
+    fun isBleRunning(): Boolean = ble != null
+
     override fun onDestroy() {
         RingLog.i("accessibility service destroyed")
         instance = null
+        try {
+            (getSystemService(Context.INPUT_SERVICE) as InputManager)
+                .unregisterInputDeviceListener(inputListener)
+        } catch (t: Throwable) {
+            RingLog.e("unregisterInputDeviceListener: ${t.message}")
+        }
         main.removeCallbacksAndMessages(null)
         ble?.stop()
         ble = null
@@ -210,6 +239,12 @@ class RingCursorService : AccessibilityService() {
     // normally, let the system decode it, and observe the input events it
     // produces here. Nothing below needs BLUETOOTH_PRIVILEGED.
     // -----------------------------------------------------------------------
+
+    private val inputListener = object : InputManager.InputDeviceListener {
+        override fun onInputDeviceAdded(id: Int) = signal("DEVICE ADDED ${describe(id)}")
+        override fun onInputDeviceRemoved(id: Int) = signal("DEVICE REMOVED dev=$id")
+        override fun onInputDeviceChanged(id: Int) = signal("DEVICE CHANGED ${describe(id)}")
+    }
 
     private fun describe(id: Int): String {
         val d = InputDevice.getDevice(id) ?: return "dev=$id(?)"
@@ -266,15 +301,19 @@ class RingCursorService : AccessibilityService() {
         RingLog.i("--- input devices (${ids.size}) ---")
         for (id in ids) {
             val d = InputDevice.getDevice(id) ?: continue
+            // Source constants overlap (SOURCE_DPAD 0x201 shares bits with
+            // SOURCE_KEYBOARD 0x101), so a bare AND reports classes the device
+            // does not have. Require the full mask.
             val kinds = buildString {
                 val s = d.sources
-                if (s and InputDevice.SOURCE_KEYBOARD != 0) append("KEYBOARD ")
-                if (s and InputDevice.SOURCE_MOUSE != 0) append("MOUSE ")
-                if (s and InputDevice.SOURCE_TOUCHPAD != 0) append("TOUCHPAD ")
-                if (s and InputDevice.SOURCE_JOYSTICK != 0) append("JOYSTICK ")
-                if (s and InputDevice.SOURCE_TRACKBALL != 0) append("TRACKBALL ")
-                if (s and InputDevice.SOURCE_DPAD != 0) append("DPAD ")
-                if (s and InputDevice.SOURCE_TOUCHSCREEN != 0) append("TOUCHSCREEN ")
+                fun has(mask: Int) = (s and mask) == mask
+                if (has(InputDevice.SOURCE_KEYBOARD)) append("KEYBOARD ")
+                if (has(InputDevice.SOURCE_MOUSE)) append("MOUSE ")
+                if (has(InputDevice.SOURCE_TOUCHPAD)) append("TOUCHPAD ")
+                if (has(InputDevice.SOURCE_JOYSTICK)) append("JOYSTICK ")
+                if (has(InputDevice.SOURCE_TRACKBALL)) append("TRACKBALL ")
+                if (has(InputDevice.SOURCE_DPAD)) append("DPAD ")
+                if (has(InputDevice.SOURCE_TOUCHSCREEN)) append("TOUCHSCREEN ")
             }
             RingLog.i("  [$id] '${d.name}' external=${d.isExternal} $kinds")
             RingLog.d("       sources=0x${Integer.toHexString(d.sources)} vendor=0x${Integer.toHexString(d.vendorId)} product=0x${Integer.toHexString(d.productId)}")

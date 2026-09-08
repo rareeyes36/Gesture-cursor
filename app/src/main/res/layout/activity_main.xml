@@ -83,11 +83,25 @@
             android:text="Key-scroll: ON" />
     </LinearLayout>
 
-    <Button
-        android:id="@+id/btnDemo"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Test cursor (no ring)" />
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btnBle"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="BLE: reconnect" />
+
+        <Button
+            android:id="@+id/btnDemo"
+            android:layout_width="0dp"
+            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:text="Test cursor" />
+    </LinearLayout>
 
     <ScrollView
         android:id="@+id/scroll"
