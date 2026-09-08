@@ -1,6 +1,7 @@
 package ca.scryr.ringcursor
 
 import android.accessibilityservice.AccessibilityService
+import android.content.Context
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.PixelFormat
