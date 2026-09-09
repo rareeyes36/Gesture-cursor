@@ -44,11 +44,39 @@ Sequence gap is clamped to at least 2.5x the tap gap on save. If the two sit
 close together there is no reliable way to tell "still tapping" from "starting
 the next burst" and a double double becomes a coin flip.
 
-**Actions.** Back, Home, Recents, notification shade, quick settings, power
-menu, screenshot, lock screen, flashlight, volume up/down/mute, play-pause,
-next, previous, four swipes, tap centre, and launch an app. A binding holds an
-ordered list of these with a pause after each, so a single action and a combo
-are the same code path.
+**Actions come in two sections.** The picker opens on **COMMON**, the original
+short set: Back, Home, Recents, notification shade, quick settings, power menu,
+screenshot, lock screen, flashlight, volume up/down/mute, play-pause, next,
+previous, four swipes, tap centre, and launch an app.
+
+Below it, **EXTENDED** holds everything else the platform allows:
+
+| Group | What is in it |
+|---|---|
+| Navigation | Menu, split screen, app drawer, the five D-pad directions, accessibility button and shortcut, headset hook |
+| Audio | Ring, alarm and call volume, media volume to max or zero, stop, rewind, fast forward, ringer normal / vibrate / silent |
+| System | Flashlight on and off separately, brightness up, down, max and min, auto-rotate, two vibration lengths, keyboard picker |
+| Settings | Twelve settings screens, app info for a package, and the Wi-Fi, internet, volume and NFC panels |
+| Apps | Open a URL, web search, dial, compose an SMS, share text, copy to clipboard, camera, dialer, contacts, alarms, start a timer, voice assistant, launch an activity by class, fire any intent action |
+| Gesture | Long swipes, edge swipes from either side, pull down from the top, long press, double tap, pinch in and out, tap at a point, swipe between two points |
+| Overwrite | Release all capture, enable capture, toggle capture, open this app |
+
+That last group matters on a head-mounted or otherwise unreachable phone. Bind
+**Release all capture** to a trigger and you have a hardware panic switch that
+does not need you to reach the screen.
+
+A binding holds an ordered list of actions with a pause after each, so a single
+action and a combo are the same code path.
+
+**Three actions need a grant you make once.** The picker shows these in amber
+with what they need. Brightness and auto-rotate need Modify system settings.
+Ringer vibrate and silent need Do Not Disturb access. Without the grant the
+action logs what is missing rather than failing silently.
+
+**Some actions take a value**, and the field below the picker changes its hint
+to match: a package name, a URL, search terms, a phone number, `x,y` pixels,
+`x1,y1,x2,y2` for a swipe, `package/class` for an activity. **Fire an intent
+action** is the escape hatch, and takes any action string at all.
 
 **Bypass is per control, not global.** Only a control you explicitly bound and
 enabled is ever swallowed, so an unbound key can never silently stop working.

@@ -6,6 +6,7 @@ import android.text.InputType
 import android.view.View
 import android.view.ViewGroup
 import android.widget.AdapterView
+import android.widget.BaseAdapter
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
@@ -13,6 +14,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Spinner
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -40,9 +42,85 @@ class BindingActivity : AppCompatActivity() {
     private lateinit var stepHost: LinearLayout
     private lateinit var triggerSpinner: Spinner
 
-    /** Actions this device can actually perform, in menu order. */
-    private val actions: List<ActionType> by lazy {
-        ActionType.entries.filter { Build.VERSION.SDK_INT >= it.minSdk }
+    /**
+     * One row of the action picker: either a section heading or a real action.
+     *
+     * The list is split in two on purpose. COMMON is the original short set,
+     * which is what almost every binding uses and what the picker opens on.
+     * EXTENDED is everything else the platform allows, kept behind a heading so
+     * the common case does not get buried in it.
+     */
+    private sealed class Pick {
+        class Header(val title: String) : Pick()
+        class Act(val action: ActionType) : Pick()
+    }
+
+    /** Section headings plus every action this device can actually run. */
+    private val picks: List<Pick> by lazy {
+        val avail = ActionType.available(Build.VERSION.SDK_INT)
+        val out = ArrayList<Pick>()
+        out.add(Pick.Header("COMMON"))
+        for (a in avail) if (a.tier == Tier.COMMON) out.add(Pick.Act(a))
+        val extended = avail.filter { it.tier == Tier.EXTENDED }
+        if (extended.isNotEmpty()) {
+            out.add(Pick.Header("EXTENDED  -  " + extended.size + " more"))
+            for (a in extended) out.add(Pick.Act(a))
+        }
+        out
+    }
+
+    /** First selectable row, so the spinner never opens on a heading. */
+    private val firstActIndex: Int by lazy { picks.indexOfFirst { it is Pick.Act }.coerceAtLeast(0) }
+
+    private fun actionAt(pos: Int): ActionType? =
+        (picks.getOrNull(pos) as? Pick.Act)?.action
+
+    private fun indexOfAction(a: ActionType): Int =
+        picks.indexOfFirst { it is Pick.Act && it.action == a }
+
+    /**
+     * Renders headings as disabled rows so they cannot be chosen, and paints
+     * its own background: the popup window follows the DayNight theme, and the
+     * app's fixed dark palette would otherwise put near-white text on a light
+     * popup in day mode.
+     */
+    private inner class PickAdapter : BaseAdapter() {
+        override fun getCount(): Int = picks.size
+        override fun getItem(position: Int): Any = picks[position]
+        override fun getItemId(position: Int): Long = position.toLong()
+        override fun areAllItemsEnabled(): Boolean = false
+        override fun isEnabled(position: Int): Boolean = picks[position] is Pick.Act
+
+        override fun getView(position: Int, convertView: View?, parent: ViewGroup?): View =
+            row(position, false)
+
+        override fun getDropDownView(position: Int, convertView: View?, parent: ViewGroup?): View =
+            row(position, true)
+
+        private fun row(position: Int, dropdown: Boolean): View {
+            val ctx = this@BindingActivity
+            val t = TextView(ctx)
+            val padH = Ui.dp(ctx, 12)
+            val padV = Ui.dp(ctx, 10)
+            t.setPadding(padH, padV, padH, padV)
+            if (dropdown) t.setBackgroundColor(Ui.CARD)
+            when (val item = picks[position]) {
+                is Pick.Header -> {
+                    t.text = item.title
+                    t.textSize = 11f
+                    t.setTextColor(Ui.FAINT)
+                    t.typeface = android.graphics.Typeface.MONOSPACE
+                }
+                is Pick.Act -> {
+                    t.text = item.action.menuText()
+                    t.textSize = 14f
+                    // An action needing a grant the user may not have yet reads
+                    // as a warning rather than a plain choice.
+                    t.setTextColor(if (item.action.note.isEmpty()) Ui.TEXT else Ui.WARN)
+                }
+            }
+            return t
+        }
     }
 
     private class StepView(
@@ -207,15 +285,12 @@ class BindingActivity : AppCompatActivity() {
         box.setPadding(0, Ui.dp(this, 6), 0, Ui.dp(this, 6))
 
         val spinner = Spinner(this)
-        spinner.adapter = ArrayAdapter(
-            this,
-            android.R.layout.simple_spinner_dropdown_item,
-            actions.map { it.group + " / " + it.label }
-        )
+        spinner.adapter = PickAdapter()
+        spinner.setSelection(firstActIndex)
         box.addView(spinner)
 
         val arg = EditText(this)
-        arg.hint = "package name, e.g. com.spotify.music"
+        arg.hint = "value"
         arg.setTextColor(Ui.TEXT)
         arg.setHintTextColor(Ui.FAINT)
         arg.inputType = InputType.TYPE_CLASS_TEXT
@@ -231,7 +306,15 @@ class BindingActivity : AppCompatActivity() {
 
         spinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(p: AdapterView<*>?, v: View?, pos: Int, id: Long) {
-                arg.visibility = if (actions[pos].needsArg) View.VISIBLE else View.GONE
+                val a = actionAt(pos)
+                if (a == null || !a.needsArg) {
+                    arg.visibility = View.GONE
+                } else {
+                    arg.visibility = View.VISIBLE
+                    // Each action wants a different kind of value, so the hint
+                    // has to follow the choice rather than name one of them.
+                    arg.hint = if (a.argHint.isEmpty()) "value" else a.argHint
+                }
             }
             override fun onNothingSelected(p: AdapterView<*>?) { }
         }
@@ -251,7 +334,7 @@ class BindingActivity : AppCompatActivity() {
         }
 
         if (preset != null) {
-            val idx = actions.indexOf(preset.action)
+            val idx = indexOfAction(preset.action)
             if (idx >= 0) spinner.setSelection(idx)
             if (preset.arg != null) arg.setText(preset.arg)
             if (preset.pauseAfterMs > 0) pause.setText(preset.pauseAfterMs.toString())
@@ -269,12 +352,11 @@ class BindingActivity : AppCompatActivity() {
     private fun save() {
         val steps = ArrayList<Step>()
         for (sv in stepViews) {
-            val pos = sv.spinner.selectedItemPosition
-            if (pos < 0 || pos >= actions.size) continue
-            val a = actions[pos]
+            val a = actionAt(sv.spinner.selectedItemPosition) ?: continue
             val argText = sv.arg.text.toString().trim()
             if (a.needsArg && argText.isEmpty()) {
-                Toast.makeText(this, a.label + " needs a package name", Toast.LENGTH_LONG).show()
+                val wants = if (a.argHint.isEmpty()) "a value" else a.argHint
+                Toast.makeText(this, a.label + " needs " + wants, Toast.LENGTH_LONG).show()
                 return
             }
             steps.add(

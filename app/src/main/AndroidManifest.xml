@@ -26,6 +26,16 @@
       they do not require the draw-over-other-apps grant.
     -->
 
+    <!--
+      Extended actions.
+      VIBRATE is granted at install. The other two are special access the user
+      turns on once in Settings; each action that needs one checks first and
+      logs what is missing rather than failing silently.
+    -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+
     <uses-feature
         android:name="android.hardware.bluetooth_le"
         android:required="true" />
