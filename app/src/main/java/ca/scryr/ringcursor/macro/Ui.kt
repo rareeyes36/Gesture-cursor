@@ -24,16 +24,16 @@ import android.widget.TextView
  * resolved badly.
  */
 object Ui {
-    const val BG = 0xFF101318.toInt()
-    const val CARD = 0xFF191E26.toInt()
-    const val RULE = 0xFF2A313C.toInt()
-    const val TEXT = 0xFFE8EBF0.toInt()
-    const val DIM = 0xFF98A1AF.toInt()
-    const val FAINT = 0xFF6B7482.toInt()
-    const val ACCENT = 0xFF8D9DFF.toInt()
-    const val OK = 0xFF4FC08D.toInt()
-    const val WARN = 0xFFE0A33E.toInt()
-    const val BAD = 0xFFE8798C.toInt()
+    val BG = 0xFF101318.toInt()
+    val CARD = 0xFF191E26.toInt()
+    val RULE = 0xFF2A313C.toInt()
+    val TEXT = 0xFFE8EBF0.toInt()
+    val DIM = 0xFF98A1AF.toInt()
+    val FAINT = 0xFF6B7482.toInt()
+    val ACCENT = 0xFF8D9DFF.toInt()
+    val OK = 0xFF4FC08D.toInt()
+    val WARN = 0xFFE0A33E.toInt()
+    val BAD = 0xFFE8798C.toInt()
 
     fun dp(ctx: Context, v: Int): Int = TypedValue.applyDimension(
         TypedValue.COMPLEX_UNIT_DIP, v.toFloat(), ctx.resources.displayMetrics

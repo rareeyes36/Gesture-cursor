@@ -5,6 +5,7 @@ import android.text.InputType
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Toast
@@ -37,7 +38,7 @@ class TimingActivity : AppCompatActivity() {
         val root = Ui.column(this)
         val pad = Ui.dp(this, 16)
         root.setPadding(pad, pad, pad, Ui.dp(this, 48))
-        scroll.addView(root, ScrollView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+        scroll.addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT))
         setContentView(scroll)
 
