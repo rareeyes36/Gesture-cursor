@@ -13,6 +13,29 @@ Android will actually let an unprivileged app see and swallow.
 
 ---
 
+## 0. Scope decision, 2026-09-09
+
+**Mouse and joystick axes are cut. MIDI is cut.** Both were in the plan below;
+neither is in the build.
+
+The axis cut follows from section 2.1: `onMotionEvent` returns `Unit` and cannot
+consume the event, so an axis binding could never take input away from the
+system pointer. That makes v2 item 9, the pointer-capture spike, moot as well.
+The MIDI cut removes v2 item 7 and Route E from the delivered surface.
+
+What shipped instead is the v1 list with the analog path (item 5) dropped, since
+its only real sources were the axes. Everything else in section 6's v1 column is
+built: registry and live table, per-control bypass, binding editor, the
+recogniser with tap-count, hold and two-step sequences, persistence, and
+profile export. The macro composer from v2 item 8 came along for free, because a
+single-action binding and a multi-step combo are the same type.
+
+The rest of this document is unchanged, including the routes and limits that
+still govern what is possible. Sections 2 and 3 are the reference; sections 6
+and 7 now describe more than the build contains.
+
+---
+
 ## 1. What already exists
 
 The probe in this repo is further along than a greenfield start. Do not restart.
