@@ -1,5 +1,8 @@
 # Builds the debug APK on GitHub's runners so you don't need Android Studio
 # or a local SDK. Push this repo, then grab the APK from the run's Artifacts.
+#
+# The Gradle wrapper is checked in, so there is no generate-the-wrapper step:
+# every run uses the exact Gradle the repo pins.
 name: Build APK
 
 on:
@@ -21,9 +24,6 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
-
-      - name: Generate wrapper if missing
-        run: gradle wrapper --gradle-version 9.7.1
 
       - name: Build debug APK
         run: ./gradlew assembleDebug --stacktrace

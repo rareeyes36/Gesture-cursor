@@ -193,9 +193,9 @@ process with no root and no privileged permission.
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-No Gradle wrapper jar is checked in. Either open the folder in Android Studio
-(it will offer to generate one) or run `gradle wrapper` once with a local
-Gradle 9.7+. CI regenerates it automatically.
+The Gradle wrapper is checked in, so a clone builds with no local Gradle
+install and every machine uses the same Gradle. `gradlew` must keep its
+executable bit; if a clone loses it, `chmod +x gradlew`.
 
 Toolchain: AGP 9.4.0, Kotlin 2.4.20, Gradle 9.7.1, compileSdk/targetSdk 37,
 minSdk 26, JDK 17 bytecode built on JDK 21.
