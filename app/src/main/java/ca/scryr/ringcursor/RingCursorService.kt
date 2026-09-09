@@ -1,7 +1,9 @@
 package ca.scryr.ringcursor
 
+import android.Manifest
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
+import android.content.pm.PackageManager
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.graphics.PixelFormat
@@ -180,21 +182,54 @@ class RingCursorService : AccessibilityService() {
         }
     }
 
-    /** (Re)open the app's own GATT link. Not needed for HID input. */
+    /**
+     * (Re)open the app's own GATT link. Not needed for HID input, and not
+     * needed by the macro layer at all.
+     *
+     * This is guarded because it runs from onServiceConnected. RingBle.start()
+     * touches bondedDevices and startScan, both of which throw SecurityException
+     * on API 31+ without BLUETOOTH_CONNECT. Unguarded, turning the accessibility
+     * service on without that grant took the whole service down before a single
+     * key could be observed, which made the macro layer look broken when the
+     * only thing missing was a permission it does not use.
+     */
     fun startBle() {
         ble?.stop()
-        ble = RingBle(
-            ctx = this,
-            onMouse = ::onMouseReport,
-            onState = { st ->
-                probeState = st
-                // Show the pointer as soon as any source can drive it. Gating
-                // this on BOOT_MOUSE_LIVE alone meant that on firmware which
-                // refuses boot mode the overlay stayed invisible forever, with
-                // no way to tell a dead overlay from a dead radio.
-                if (st == ProbeState.BOOT_MOUSE_LIVE) showCursor(true)
-            }
-        ).also { it.start() }
+        ble = null
+
+        if (!hasBluetoothPermission()) {
+            RingLog.e(
+                "BLE skipped: no Bluetooth permission. The macro layer does not need it. " +
+                    "Grant it on the Developer screen to run the ring probe."
+            )
+            return
+        }
+
+        try {
+            ble = RingBle(
+                ctx = this,
+                onMouse = ::onMouseReport,
+                onState = { st ->
+                    probeState = st
+                    // Show the pointer as soon as any source can drive it. Gating
+                    // this on BOOT_MOUSE_LIVE alone meant that on firmware which
+                    // refuses boot mode the overlay stayed invisible forever, with
+                    // no way to tell a dead overlay from a dead radio.
+                    if (st == ProbeState.BOOT_MOUSE_LIVE) showCursor(true)
+                }
+            ).also { it.start() }
+        } catch (t: Throwable) {
+            // Never let the optional radio path kill the service.
+            RingLog.e("BLE failed to start: " + t.javaClass.simpleName + ": " + t.message)
+            ble = null
+        }
+    }
+
+    /** BLUETOOTH_CONNECT is only a runtime permission from API 31. */
+    private fun hasBluetoothPermission(): Boolean {
+        if (Build.VERSION.SDK_INT < 31) return true
+        return checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) ==
+            PackageManager.PERMISSION_GRANTED
     }
 
     fun stopBle() {

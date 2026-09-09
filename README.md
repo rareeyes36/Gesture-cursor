@@ -73,14 +73,66 @@ These are limits of the platform, not of the build.
   reaches accessibility. Lock screen is the substitute. Keys in that class are
   marked `blocked` in the table rather than silently failing.
 
-## Using it
+## Running it
 
-1. Launch the app and press **Open accessibility settings**, turn on Ring Cursor.
-2. Press buttons on your Bluetooth device. Rows appear.
-3. Tap a row, choose a trigger and one or more actions, save.
-4. Turn on **Bypass** at the top and the per-device switch.
+### Install
 
-Bypass defaults to off and the master switch is the first thing panic clears.
+Grab `ringcursor-debug-apk` from the Artifacts of any green **Build APK** run on
+GitHub, unzip it, and install:
+
+```bash
+adb install -r app-debug.apk
+```
+
+Or copy the APK to the phone and open it, allowing install from unknown sources
+when prompted. Needs Android 8.0 or newer.
+
+### Set up
+
+1. **Pair your Bluetooth device in Android's Bluetooth settings**, as a normal
+   keyboard, remote or presenter. Overwrite reads it through Android's input
+   stack, so it must be bonded and connected the ordinary way.
+2. **Open Overwrite** and press *Open accessibility settings*.
+3. **Find Overwrite in the list and turn it on.** Accept the warning. Android
+   asks because gesture dispatch and key filtering are powerful, which is
+   exactly what the app uses.
+4. Back in the app, the status line should read `service running`. If it reads
+   `service OFF`, the toggle did not stick, which is usually battery
+   optimisation. Exempt the app and try again.
+
+No Bluetooth permission is needed. The macro layer reads keys through the
+accessibility service, not the radio. The permission only matters for the ring
+probe on the Developer screen.
+
+### Bind a button
+
+5. **Press a button on your Bluetooth device.** A row appears under its device
+   with the indicator lit. This is the learn step: nothing is configured by
+   hand, the table fills in as you press things.
+6. **Tap the row.** Choose a trigger (single, double, triple, hold, or double
+   double) and an action. *Add another step* turns it into a macro, and the
+   pause field is the delay after that step.
+7. **Save.**
+
+### Turn on capture
+
+8. **Switch on Bypass** at the top, then the switch on the device's card. Both
+   are required.
+
+The key is now withheld from whatever app is in the foreground. Only controls
+you bound and enabled are ever taken; everything else passes through. *Panic:
+release everything* clears every capture flag at once if a binding gets in your
+way, and turning the accessibility service off does the same.
+
+### What to expect
+
+A control bound to one trigger fires instantly. Bind the same control to both
+single and double and the single now waits out the tap gap, because it has to
+know a second press is not coming. That is the tradeoff, and the Timing screen
+tunes it.
+
+A bound key that you press in a pattern with no binding is swallowed and does
+nothing. That is what capture means, and it is why bypass is off by default.
 
 ---
 
@@ -200,11 +252,16 @@ executable bit; if a clone loses it, `chmod +x gradlew`.
 Toolchain: AGP 9.4.0, Kotlin 2.4.20, Gradle 9.7.1, compileSdk/targetSdk 37,
 minSdk 26, JDK 17 bytecode built on JDK 21.
 
-## Run
+## Run the probe
 
-1. Launch the app, press **Grant BT**.
-2. Press **Enable service**, turn on "Ring Cursor" in accessibility settings.
-3. Watch the log.
+The probe now lives behind the **Developer** button on the main screen; it is no
+longer what the app opens on.
+
+1. Open Overwrite, press **Developer**.
+2. Press **Grant BT**. The macro layer does not need this permission, but the
+   probe does, and without it BLE is skipped with a line in the log saying so.
+3. Press **Enable service** and turn Overwrite on in accessibility settings.
+4. Watch the log.
 
 **Do not pair the ring in Bluetooth settings while testing.** If it bonds as an
 HID device, the system HID host becomes a second GATT client and will set

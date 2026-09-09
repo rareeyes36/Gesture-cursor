@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Ring Cursor</string>
-    <string name="a11y_label">Ring Cursor</string>
-    <string name="a11y_desc">Draws a pointer controlled by the Manridy R6 ring and dispatches taps at the pointer position. Requires gesture dispatch to click.</string>
+    <string name="app_name">Overwrite</string>
+    <string name="a11y_label">Overwrite</string>
+    <string name="a11y_desc">Watches key presses from connected Bluetooth devices so they can be bound to phone actions, and performs those actions. Keys you have explicitly bound and enabled are withheld from other apps; everything else passes through untouched.</string>
 </resources>
