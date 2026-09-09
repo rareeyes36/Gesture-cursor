@@ -16,6 +16,11 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.accessibility.AccessibilityEvent
+import ca.scryr.ringcursor.macro.ActionRunner
+import ca.scryr.ringcursor.macro.Capture
+import ca.scryr.ringcursor.macro.Recognizer
+import ca.scryr.ringcursor.macro.Registry
+import ca.scryr.ringcursor.macro.Transport
 import kotlin.math.abs
 
 /**
@@ -64,9 +69,12 @@ class RingCursorService : AccessibilityService() {
         var signalCount: Int = 0
             private set
 
-        /** Turn a button press into a scroll gesture. */
+        /**
+         * Legacy probe behaviour: turn any external button press into a
+         * scroll. Off by default now that the macro layer owns key events.
+         */
         @Volatile
-        var keyToScroll: Boolean = true
+        var keyToScroll: Boolean = false
 
         /** Long-press threshold. */
         private const val LONG_PRESS_MS = 500L
@@ -95,6 +103,17 @@ class RingCursorService : AccessibilityService() {
 
     private var ble: RingBle? = null
 
+    // Macro layer
+    private var actions: ActionRunner? = null
+    private var recognizer: Recognizer? = null
+
+    /**
+     * Keys whose DOWN edge we swallowed, so the matching UP is swallowed too.
+     * Keyed by device as well as keycode: two keyboards can hold the same
+     * keycode down at the same time.
+     */
+    private val consumedKeys = HashSet<String>()
+
     // Button / gesture state
     private var lastButtons = 0
     private var pressStartMs = 0L
@@ -119,6 +138,12 @@ class RingCursorService : AccessibilityService() {
         super.onServiceConnected()
         instance = this
         RingLog.i("accessibility service connected")
+
+        Registry.init(this)
+        val runner = ActionRunner(this, main)
+        actions = runner
+        recognizer = Recognizer(main) { binding -> runner.run(binding) }
+        RingLog.i("macro layer ready: " + Registry.bindingCount() + " binding(s)")
 
         // Motion events are requested at runtime rather than through
         // android:motionEventSources in the XML: that attribute is not present
@@ -206,6 +231,10 @@ class RingCursorService : AccessibilityService() {
         } catch (t: Throwable) {
             RingLog.e("unregisterInputDeviceListener: ${t.message}")
         }
+        recognizer?.reset()
+        recognizer = null
+        actions = null
+        consumedKeys.clear()
         main.removeCallbacksAndMessages(null)
         ble?.stop()
         ble = null
@@ -269,23 +298,85 @@ class RingCursorService : AccessibilityService() {
         return "dev=$id '${d.name}' src=0x${Integer.toHexString(d.sources)} ext=${d.isExternal}"
     }
 
+    /**
+     * The macro layer's only input in this build.
+     *
+     * onKeyEvent returns Boolean, so a key can genuinely be swallowed here and
+     * never reach the foreground app. That is the whole bypass mechanism.
+     * Axes are not handled: onMotionEvent returns Unit and cannot consume, so
+     * binding one could never actually take the input away from the system.
+     */
     override fun onKeyEvent(event: KeyEvent): Boolean {
+        val dev = InputDevice.getDevice(event.deviceId)
+        val external = dev?.isExternal == true
         val name = KeyEvent.keyCodeToString(event.keyCode)
-        val action = if (event.action == KeyEvent.ACTION_DOWN) "DOWN" else "UP"
-        val external = InputDevice.getDevice(event.deviceId)?.isExternal == true
+        val down = event.action == KeyEvent.ACTION_DOWN
+        val slot = event.deviceId.toString() + ":" + event.keyCode
 
-        signal("KEY $name ($action) code=${event.keyCode} scan=${event.scanCode} ${describe(event.deviceId)}")
+        signal("KEY $name (${if (down) "DOWN" else "UP"}) code=${event.keyCode} ${describe(event.deviceId)}")
 
-        // Only act on hardware that is not part of the phone, so the volume and
-        // power keys keep working normally.
-        if (keyToScroll && external && event.action == KeyEvent.ACTION_DOWN) {
-            showCursor(true)
-            dispatchScroll(engine.x, engine.y, 600f)
-            RingLog.i("  -> scroll dispatched at (${engine.x.toInt()}, ${engine.y.toInt()})")
+        // Auto-repeat from a held key would inflate the tap count into a
+        // sequence the user never performed.
+        if (down && event.repeatCount > 0) return consumedKeys.contains(slot)
+
+        // Our own media and volume actions inject key events. Without this the
+        // first macro bound to volume up would re-trigger itself forever.
+        if (ActionRunner.suppressed()) return false
+
+        val deviceKey = deviceKeyOf(dev, event.deviceId)
+        val deviceName = dev?.name ?: ("device " + event.deviceId)
+        val controlKey = "key:" + event.keyCode
+
+        // Power never reaches accessibility, and Home is eaten first on many
+        // OEM builds. Record them so the table is honest about it.
+        val capture =
+            if (event.keyCode == KeyEvent.KEYCODE_POWER || event.keyCode == KeyEvent.KEYCODE_HOME)
+                Capture.BLOCKED
+            else
+                Capture.FULL
+
+        if (down) {
+            Registry.observe(
+                deviceKey = deviceKey,
+                deviceName = deviceName,
+                transport = Transport.HID_KEY,
+                external = external,
+                controlKey = controlKey,
+                controlLabel = name.removePrefix("KEYCODE_"),
+                capture = capture
+            )
         }
 
-        // Never consume: passing false leaves the key working everywhere else.
-        return false
+        val rec = recognizer ?: return false
+
+        val consume: Boolean
+        if (down) {
+            consume = rec.shouldConsume(deviceKey, controlKey)
+            if (consume) consumedKeys.add(slot)
+        } else {
+            consume = consumedKeys.remove(slot)
+        }
+
+        rec.submit(deviceKey, controlKey, down, consume)
+
+        // Legacy probe behaviour, off unless explicitly switched on.
+        if (keyToScroll && external && down && !consume) {
+            showCursor(true)
+            dispatchScroll(engine.x, engine.y, 600f)
+        }
+
+        return consume
+    }
+
+    /**
+     * A key that survives reconnection. InputDevice.getDescriptor() is a stable
+     * hash of the device's identity, so a keyboard keeps its bindings after it
+     * is turned off and on again; the numeric deviceId does not survive that.
+     */
+    private fun deviceKeyOf(dev: InputDevice?, id: Int): String {
+        val d = dev?.descriptor
+        if (d != null && d.isNotEmpty()) return d
+        return "dev:" + id
     }
 
     override fun onMotionEvent(event: MotionEvent) {

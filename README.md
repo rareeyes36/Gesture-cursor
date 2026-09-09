@@ -1,4 +1,93 @@
-# Ring Cursor 0.2-probe
+# Overwrite 0.6
+
+Turn the buttons on any connected Bluetooth device into macros on the phone.
+
+Pair a Bluetooth keyboard, remote, presenter or clicker, turn the accessibility
+service on, and press a button. A row appears for it with a live indicator.
+Bind that row to a trigger and an action, switch bypass on, and the phone stops
+acting on the key and runs your macro instead.
+
+## What it does
+
+**Discovery is automatic.** Nothing is configured by hand. The table is keyed on
+device plus control, so the first press of a key nobody has seen before inserts
+its row. `Registry.observe` is the whole learn flow.
+
+**Triggers are burst patterns.** A trigger is a list of burst sizes plus a hold
+flag, which is exactly how a person describes it:
+
+| Trigger | Pattern | Meaning |
+|---|---|---|
+| single | `[1]` | one press |
+| double | `[2]` | two rapid presses |
+| triple | `[3]` | three rapid presses |
+| hold | `[1]` + hold | held past the hold threshold |
+| double double | `[2,2]` | two presses, a pause, two more |
+
+**The delay is only paid where ambiguity exists.** This is the part worth
+knowing. Bindings form a prefix set, and every time a burst could terminate the
+recogniser asks whether any longer trigger still shares the current prefix. If
+none does it fires immediately, so a button bound to exactly one trigger has
+zero added latency. Only genuinely overloaded controls ever wait. Bind a key to
+`single` alone and it is instant; bind it to `single` and `double` and the
+single now waits out the tap gap, because it has to.
+
+Three windows drive it, tunable on the Timing screen:
+
+| Constant | Default | Meaning |
+|---|---|---|
+| tap gap | 260 ms | longest pause still inside one burst |
+| sequence gap | 700 ms | longest pause between bursts |
+| hold threshold | 500 ms | a press outliving this is a hold |
+
+Sequence gap is clamped to at least 2.5x the tap gap on save. If the two sit
+close together there is no reliable way to tell "still tapping" from "starting
+the next burst" and a double double becomes a coin flip.
+
+**Actions.** Back, Home, Recents, notification shade, quick settings, power
+menu, screenshot, lock screen, flashlight, volume up/down/mute, play-pause,
+next, previous, four swipes, tap centre, and launch an app. A binding holds an
+ordered list of these with a pause after each, so a single action and a combo
+are the same code path.
+
+**Bypass is per control, not global.** Only a control you explicitly bound and
+enabled is ever swallowed, so an unbound key can never silently stop working.
+The alternative, swallowing anything that could start a trigger and replaying
+it if the sequence dead-ends, was rejected: arbitrary keys cannot be
+re-injected into another app without a signature permission, so the replay
+would be a lie. A panic button on the main screen drops every capture flag at
+once.
+
+## What it cannot do, and why
+
+These are limits of the platform, not of the build.
+
+- **Mouse and joystick axes are out of scope.** `onKeyEvent` returns `Boolean`
+  so a key can be swallowed. `onMotionEvent` returns `Unit`, so an axis binding
+  could never take input away from the system pointer. Half a capture path is
+  worse than none.
+- **MIDI is out of scope for this release.**
+- **Headset volume cannot be intercepted.** On A2DP it travels as AVRCP
+  absolute volume inside the audio framework and never becomes a `KeyEvent`.
+- **Power off is impossible** for any non-system app, and the power key never
+  reaches accessibility. Lock screen is the substitute. Keys in that class are
+  marked `blocked` in the table rather than silently failing.
+
+## Using it
+
+1. Launch the app and press **Open accessibility settings**, turn on Ring Cursor.
+2. Press buttons on your Bluetooth device. Rows appear.
+3. Tap a row, choose a trigger and one or more actions, save.
+4. Turn on **Bypass** at the top and the per-device switch.
+
+Bypass defaults to off and the master switch is the first thing panic clears.
+
+---
+
+# Ring Cursor probe notes
+
+The sections below are the BLE research this app grew out of, kept because the
+protocol findings are still the only record of them.
 
 An Android overlay cursor driven by a Manridy R6 smart ring over BLE.
 
